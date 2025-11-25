@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Demo Fisuras - Cámara</title>
+<style>
+body { font-family: Arial, sans-serif; max-width: 900px; margin: 20px auto; }
+video, canvas { border: 1px solid #ccc; display:block; margin-bottom:10px; }
+#resultImg { max-width: 100%; }
+</style>
+</head>
+<body>
+<h2>Demo: tomar foto y enviar al modelo</h2>
+<video id="video" width="640" height="480" autoplay></video>
+<button id="captureBtn">Tomar foto</button>
+<canvas id="canvas" width="640" height="480" style="display:none"></canvas>
+<div>
+<button id="sendBtn" disabled>Enviar al modelo</button>
+</div>
+<h3>Resultado</h3>
+<div id="resultText"></div>
+<div class="probs" id="probs"></div>
+<h4>Grad-CAM</h4>
+<img id="resultImg" src="" alt="Grad-CAM"/>
+
+
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const captureBtn = document.getElementById('captureBtn');
+const sendBtn = document.getElementById('sendBtn');
+const resultText = document.getElementById('resultText');
+const resultImg = document.getElementById('resultImg');
+const probsDiv = document.getElementById('probs');
+
+
+// REEMPLAZA con la URL pública del backend (Render/Cloud Run)
+const API_URL = "https://TU_APP_ON_RENDER/predict";
+
+
+navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+.then(stream => { video.srcObject = stream; video.play(); })
+.catch(err => { alert('No se pudo acceder a la cámara: ' + err); });
+
+
+captureBtn.addEventListener('click', () => {
+const ctx = canvas.getContext('2d');
+ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+sendBtn.disabled = false;
+});
+
+
+sendBtn.addEventListener('click', async () => {
+sendBtn.disabled = true;
+resultText.innerText = "Enviando...";
+const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+try {
+const resp = await fetch(API_URL, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ image: dataUrl })
+});
+const j = await resp.json();
+if (j.error) { resultText.innerText = "Error: " + j.error; sendBtn.disabled = false; return; }
+resultText.innerText = `Predicción: ${j.label}`;
+probsDiv.innerHTML = '';
+for (const [k,v] of Object.entries(j.probs)) {
+const p = document.createElement('div');
+p.innerText = `${k}: ${(v*100).toFixed(1)}%`;
+probsDiv.appendChild(p);
+}
+if (j.gradcam) resultImg.src = j.gradcam; else resultImg.src = '';
+} catch (e) {
+resultText.innerText = "Error en fetch: " + e;
+} finally { sendBtn.disabled = false; }
+</html>
